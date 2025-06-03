@@ -1,4 +1,4 @@
-"""
+""""
 Interactive Plotting Components for Signal Analysis
 
 Provides standardized plotting functions using Plotly for interactive
