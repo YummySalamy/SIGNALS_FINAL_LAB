@@ -1,0 +1,253 @@
+> **Objetivo global**
+> Desarrolla una aplicación multipágina en Streamlit que reproduzca por completo el laboratorio de Señales y Sistemas (Serie de Fourier + tres ejercicios de modulación) y permita al usuario:
+>
+> * subir señales de audio o elegir señales sintéticas,
+> * ajustar todos los parámetros clave (n.º de armónicos, frecuencias de portadora, índices de modulación, orden de filtros, etc.) desde la barra lateral,
+> * visualizar resultados (tiempo, espectro, errores, SNR, etc.) de forma interactiva,
+> * descargar las señales procesadas.
+>   Además, organízalo con la estructura de carpetas detallada más abajo, separando rigurosamente la “lógica DSP” del “front-end Streamlit”.
+
+---
+
+## 1 Fundamentos teóricos mínimos que **deben** aparecer comentados en el código
+
+| Tema                                        | Fórmulas esenciales / ideas clave                                                                                                                                                           |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Serie trigonométrica de Fourier**         | $x(t)=\dfrac{a_{0}}{2}+\sum_{k=1}^{\infty}\bigl[a_{k}\cos k\omega_{0}t+b_{k}\sin k\omega_{0}t\bigr]$ con $a_{k}=\dfrac{2}{T}\!\int_{0}^{T}x(t)\cos k\omega_{0}t\,dt$, idem $b_{k}$.         |
+| **Forma exponencial**                       | $C_{k}=\dfrac{1}{T}\!\int_{0}^{T}\!x(t)e^{-jk\omega_{0}t}dt,\; x(t)=\sum_{k=-\infty}^{\infty}C_{k}e^{jk\omega_{0}t}$.                                                                       |
+| **Convergencia (condiciones de Dirichlet)** | Serie converge a $\tfrac12[x(t^{+})+x(t^{-})]$ en discontinuidades; fenómeno de Gibbs.                                                                                                      |
+| **Producto con una portadora**              | $x(t)\cos\omega_{c}t\;\longleftrightarrow\;\tfrac12[X(f-f_{c})+X(f+f_{c})]$.                                                                                                                |
+| **DSB-SC demodulación coherente**           | Multiplicar por $\cos\omega_{c}t$ ⇒ componente base y réplicas en ±2$f_{c}$; filtrar PB deja $\tfrac12x(t)$.                                                                                |
+| **I/Q (QAM en banda base)**                 | $s(t)=x_{I}(t)\cos\omega_{c}t+x_{Q}(t)\sin\omega_{c}t$.  Receptor: $2s(t)\cos\omega_{c}t\to$ LPF ⇒ $x_{I}(t)$; idem sen.  Ortogonalidad $\int_{0}^{T}\cos\omega_{c}t\sin\omega_{c}t\,dt=0$. |
+| **AM DSB-LC (índice $\mu$)**                | $s_{\mu}(t)=\bigl(1+\mu\,m(t)\bigr)\cos\omega_{c}t$.  Sobre-modulación $\mu>1$ produce inversión de envolvente.                                                                             |
+| **Métricas**                                | Error RMS $=\sqrt{\frac1T\int_{0}^{T}\!\lvert x-\hat x\rvert^{2}}$, SNR $=10\log_{10}\frac{\sum x^{2}}{\sum(e)^{2}}$.                                                                       |
+
+Incluye estas fórmulas como doc-strings o comentarios pedagógicos en los archivos del núcleo DSP.
+
+---
+
+## 2 Requisitos funcionales por página
+
+| Página                    | Contenido N° 1 ️⃣                                                    | Entradas de usuario (sidebar)                                                                                 | Resultados gráficos obligatorios                                                                          |        |                           |
+| ------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------ | ------------------------- |
+| **1\_Fourier\_Series.py** | Ejemplos 3.6.1–3.6.4 (triangular, serrucho, parabólica, señal mixta) | selector del ejemplo, **slider N** (1-100), toggle “mostrar error RMS vs N”, rango de tiempo                  | superposición señal original vs reconstruida; stem (                                                      | C\_{k} | ); curva error-N opcional |
+| **2\_DSB\_SC\_AM.py**     | Cadena TX→RX de Fig. 1-2 (DSB-SC)                                    | *FileUploader* de audio mono, **number\_input fc** 30-50 kHz, **selectbox** ventana PSD, **slider orden FIR** | forma de onda en cada punto rojo (Fig. 2), PSD normalizada; waveform recuperada vs original; SNR          |        |                           |
+| **3\_IQ\_QAM.py**         | Cadena I/Q de Fig. 3                                                 | 2 × FileUploader (o generador de senoidales demo), fc, orden FIR                                              | tiempos + PSD en: $x_I$, $x_Q$, $s(t)$, salidas demod; SNR de I y Q; gráfica de fuga si se altera la fase |        |                           |
+| **4\_DSB\_LC\_AM.py**     | AM con portadora grande e índices μ = 0.7, 1.0, 1.2                  | 3 sliders amplitudes A,B,C; 3 inputs frecuencias f1-f3; select mu                                             | señales moduladas (zoom 5 ms), PSD; salida del detector de envolvente y comentario de distorsión          |        |                           |
+
+Todos los parámetros deben actualizar las gráficas en tiempo real gracias a `st.cache_data`.
+
+---
+
+## 3 Estructura de carpetas y responsabilidades
+
+```
+signals-lab/
+│
+├─ app.py              # Configura tema, ancho, estado global mínimo
+├─ pages/              # GUI de cada práctica (nunca lógica DSP pesada)
+│   ├─ 1_Fourier_Series.py
+│   ├─ 2_DSB_SC_AM.py
+│   ├─ 3_IQ_QAM.py
+│   └─ 4_DSB_LC_AM.py
+│
+├─ dsp/                # Núcleo numérico, 100 % test-able, sin Streamlit
+│   ├─ fourier.py      # coeficientes, reconstrucción, error RMS
+│   ├─ modulation.py   # mod/demod DSB-SC, I/Q, DSB-LC
+│   ├─ filters.py      # firwin / iirdesign, utilidades Hilbert
+│   └─ metrics.py      # SNR, Gibbs, etc.
+│
+├─ components/         # Capa de presentación (Plotly/matplotlib/audio)
+│   ├─ plotting.py     # stem, overlay, PSD, espectrograma
+│   ├─ audio_widgets.py# uploader, reproductor, descarga WAV
+│   └─ layout.py       # generadores de sidebar/tablas
+│
+├─ utils/
+│   ├─ cache.py        # wrappers @st.cache_data / @st.cache_resource
+│   └─ file_io.py      # WAV read/write, resampling
+│
+├─ data/               # Señales de ejemplo (opcional)
+├─ tests/              # pytest para todo dsp/
+├─ requirements.txt    # streamlit, numpy, scipy, plotly, soundfile, matplotlib, pytest
+├─ README.md           # cómo arrancar / estructura
+└─ .streamlit/config.toml  # tema claro/oscuro, orden de páginas
+```
+
+*Consejo:* mantén cada archivo por debajo de \~250 líneas; si crece, factoriza en sub-módulos.
+
+---
+
+## 4 Especificaciones de implementación
+
+1. **Streamlit Multipage**: `app.py` no debe contener lógica; sólo llamada a `set_page_config` y bienvenidas.
+2. **Reactividad**:
+
+   * Usa `@st.cache_data` para toda operación O(N·M) pesada (integración numérica, filtrado FIR largo).
+   * `@st.cache_resource` para filtros FIR ya diseñados y portadoras.
+3. **Plotting**:
+
+   * Plotly para espectros interactivos; matplotlib para overlays sencillos (`st.pyplot`).
+   * Eje y de PSD en dB con pico a 0 dB por claridad.
+4. **Audio**: utilizar **soundfile** (`sf.read`, `sf.write`) para máxima compatibilidad.
+
+   * Permitir descarga (`st.download_button`) de la señal recuperada en cada módulo.
+5. **Parámetros UI**: todos los `slider/number_input` deben tener rangos físicos razonables y validación (aliasing < Nyquist).
+6. **Pruebas unitarias**: mínimo un test por función crítica en `dsp/` (coeficientes vs valores analíticos, SNR conocida, etc.).
+7. **Documentación**:
+
+   * README con pasos de instalación (`python -m venv`, `pip install -r requirements.txt`) y `streamlit run app.py`.
+   * Breve descripción teórica de cada página (puedes incrustar GIF de la app).
+8. **Estilo**: seguir *PEP 8* y comentar con docstrings **Google style**; explicaciones matemáticas en LaTeX-friendly strings.
+9. **Extensibilidad**: código debe ser limpio para añadir p.ej. SSB o FM más adelante.
+
+---
+
+## 5 Entregables que debe generar tu modelo
+
+1. **Árbol completo de archivos** con el contenido exacto de cada fichero (código Python, README, requirements, config.toml).
+2. Comentarios explicativos donde aplique la teoría (ver Sección 1).
+3. Instrucciones finales al usuario para ejecutar la aplicación y abrir cada página.
+
+---
+
+### Indicaciones finales al modelo
+
+* **No omitas ningún archivo** listado en la estructura.
+* **Incluye las fórmulas y razonamientos** en los doc-strings o comentarios de los módulos del núcleo DSP.
+* **No hard-codees rutas absolutas**; usa `Path(__file__).parent`.
+* Acepta audio de cualquier duración; si es estéreo, convierte a mono.
+* Garantiza que cada cambio de parámetro redibuje las gráficas sin reiniciar la sesión.
+
+---
+
+> **Produce ahora todo el código fuente necesario, respetando la estructura y requisitos anteriores.**
+
+
+
+Utiliza este bloque **junto con el prompt principal** que describe la arquitectura Streamlit.  Aquí encontrarás:
+
+1. **Definición analítica y computacional de las señales 3.6.1 – 3.6.4**
+2. **Especificaciones de discretización y muestreo** para evitar aliasing en todas las páginas
+3. **Descripción técnica de las Figuras 1, 2, 3** y los “nodos rojos” que debes representar en la interfaz
+4. **Convenciones de nomenclatura** que todo el código debe respetar
+
+---
+
+## 1 Ejemplos 3.6.1 – 3.6.4 (capítulo 3.6 del PDF)
+
+| Ejemplo                      | Dominio analítico $[-T/2,\,T/2]$ | Forma cerrada $x(t)$                                 | Simetría (acelera coef.) | Callable Python sugerido                        |                   |                                |
+| ---------------------------- | -------------------------------- | ---------------------------------------------------- | ------------------------ | ----------------------------------------------- | ----------------- | ------------------------------ |
+| **3.6.1 Triangular**         | $T=2$                            | (x(t)=1-                                             | t                        | )                                               | **Par** ⇒ $b_k=0$ | `py\nf = lambda t: 1-abs(t)\n` |
+| **3.6.2 Saw-tooth**          | $T=2π$                           | $x(t)=t$                                             | **Impar** ⇒ $a_k=a_0=0$  | `py\nf = lambda t: t\n`                         |                   |                                |
+| **3.6.3 Parabólica**         | $T=2π$                           | $x(t)=t^{2}$                                         | **Par**                  | `py\nf = lambda t: t**2\n`                      |                   |                                |
+| **3.6.4 Mixta rampa + step** | $T=2$ (tras periodicación)       | $x(t)=\begin{cases}t+1,&-1<t<0\\1,&0<t<1\end{cases}$ | Sin simetría             | `py\ndef f(t):\n    return t+1 if t<0 else 1\n` |                   |                                |
+
+**Detalles de implementación en `dsp/fourier.py`**
+
+```python
+def eval_3_6_signal(example: str, t: np.ndarray) -> np.ndarray:
+    """Return x(t) for the requested textbook example."""
+    if example == "3.6.1":
+        return 1 - np.abs(t)
+    if example == "3.6.2":
+        return t
+    if example == "3.6.3":
+        return t**2
+    if example == "3.6.4":               # vectorizado
+        return np.where(t < 0, t + 1, 1)
+    raise ValueError("unknown example")
+```
+
+*Tips*:
+
+* Discretiza con `Ns = 4096` muestras por período para un error < 1 e-3 en la inversa FFT.
+* Coloca el origen temporal **en el centro** del periodo para calcular simetrías con facilidad.
+* Pre-normaliza cada señal a rango $[-1,1]$ si deseas cohesión visual en la GUI.
+
+---
+
+## 2 Muestreo y discretización (aplica a todas las páginas)
+
+| Escenario                    | Frec. muestreo mínima    | Razonamiento                                       |
+| ---------------------------- | ------------------------ | -------------------------------------------------- |
+| Fourier                      | $N_s ≥ 4096$ pts/periodo | Para que la reconstrucción numérica sea ≈ continua |
+| Audio baseband               | 48 kHz                   | estándar WAV                                       |
+| Modulación $f_c ∈ 30–50$ kHz | **Fs = 100 kHz**         | Deja $f_c + B_{audio} < Fs/2$                      |
+
+*Agrega un `st.number_input("Sampling rate (Hz)", 48_000, 192_000, 100_000)` en cada página de radio-frecuencia.*
+
+---
+
+## 3 Lectura de las figuras → nodos a graficar
+
+<img src="fig1.png" width="300"> **Figura 1**
+*TX DSB-SC.* Nodos rojos: **$x(t)$** (entrada), **$y(t)$** (señal modulada).
+
+<img src="fig2.png" width="400"> **Figura 2**
+*RX coherente.* Nodos rojos: $y(t)$ (antena), $x'(t)=y\cosω_c t$ (mezcla), salida de **LPF** ($\tfrac12 x(t)$).
+
+<img src="fig3.png" width="350"> **Figura 3**
+*RX en cuadratura.* Para **cada rama** I/Q:
+
+1. $s(t)$ (entrada común)
+2. salida del multiplicador $m_I(t)$ o $m_Q(t)$
+3. salida LPF $x_I(t)$ ó $x_Q(t)$
+
+**Obligatorio en la interfaz**:
+
+* una **red de tabs (“Tiempo”, “Espectro”)** por nodo,
+* botón *Download* WAV/CSV para cada señal recuperada.
+
+---
+
+## 4 Convenciones de nombres de variables y funciones
+
+* `t`           – vector de tiempo continuo (s)
+* `fs`          – frecuencia de muestreo (Hz)
+* `fc`          – frecuencia de portadora (Hz)
+* `x` / `y`     – señales en dominio temporal (NumPy array)
+* `X` / `Y`     – transformadas (NumPy array, misma longitud)
+* `compute_psd(x, fs)`  → devuelve `(f, Pxx)` en dB re. máximo
+* `design_lpf(cutoff, fs, order)` → devuelve **sos** (2nd-order sections)
+
+Mantén estos nombres iguales en **dsp/** y **components/** para que tests unitarios no fallen.
+
+---
+
+## 5 Pseudocódigo obligatorio para cada operación clave
+
+```python
+# ----- DSB-SC modulación -----
+def dsb_sc_mod(x, fc, fs):
+    t = np.arange(len(x)) / fs
+    return x * np.cos(2*np.pi*fc*t)
+
+# ----- Coherent demod -----
+def dsb_sc_demod(y, fc, fs, sos):
+    t = np.arange(len(y)) / fs
+    mixed = 2 * y * np.cos(2*np.pi*fc*t)
+    return signal.sosfilt(sos, mixed)
+
+# ----- I/Q branch -----
+def iq_mod(xI, xQ, fc, fs):
+    t = np.arange(len(xI)) / fs
+    return xI*np.cos(2*np.pi*fc*t) + xQ*np.sin(2*np.pi*fc*t)
+
+def iq_demod(s, fc, fs, sos):
+    t = np.arange(len(s)) / fs
+    I = 2*s*np.cos(2*np.pi*fc*t)
+    Q = 2*s*np.sin(2*np.pi*fc*t)
+    return (signal.sosfilt(sos, I), signal.sosfilt(sos, Q))
+```
+
+*Inclúyelo literalmente en `dsp/modulation.py` con doc-strings que citen las ecuaciones del apartado 1.*
+
+---
+
+## 6 Pruebas mínimas que **debes** codificar en `tests/`
+
+1. **`test_coeffs_triangle()`** – coeficientes numéricos vs analíticos $\frac{8}{π^{2}n^{2}}$.
+2. **`test_dsb_recovery()`** – SNR > 60 dB al demodular un tono 1 kHz con FIR orden 501.
+3. **`test_iq_leakage()`** – inserta fase 90° ± 5° → Leakage < –20 dB.
+
+---
