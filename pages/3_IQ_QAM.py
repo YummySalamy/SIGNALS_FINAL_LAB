@@ -246,20 +246,26 @@ def main():
     with col1:
         st.markdown("**📈 Canal I (In-phase):**")
         metrics_I_dict = {
-            "SNR I": f"{metrics_I['snr']:.1f} dB",
-            "Correlación I": f"{metrics_I['correlation']:.4f}",
-            "Error RMS I": f"{metrics_I['rms_error']:.6f}"
+            "SNR I": metrics_I['snr'],
+            "Correlación I": metrics_I['correlation'],
+            "Error RMS I": metrics_I['rms_error']
         }
-        create_metrics_grid(metrics_I_dict)
+        units_I = {
+            "SNR I": "dB"
+        }
+        create_metrics_grid(metrics_I_dict, units_I)
     
     with col2:
         st.markdown("**📉 Canal Q (Quadrature):**")
         metrics_Q_dict = {
-            "SNR Q": f"{metrics_Q['snr']:.1f} dB",
-            "Correlación Q": f"{metrics_Q['correlation']:.4f}",
-            "Error RMS Q": f"{metrics_Q['rms_error']:.6f}"
+            "SNR Q": metrics_Q['snr'],
+            "Correlación Q": metrics_Q['correlation'],
+            "Error RMS Q": metrics_Q['rms_error']
         }
-        create_metrics_grid(metrics_Q_dict)
+        units_Q = {
+            "SNR Q": "dB"
+        }
+        create_metrics_grid(metrics_Q_dict, units_Q)
     
     # Cross-talk and isolation metrics
     st.markdown("**🔀 Análisis de aislamiento:**")
@@ -784,63 +790,63 @@ def generate_iq_demo_signal(signal_type: str, duration: float, fs: float, channe
     if channel == 'I':
         # I channel signals (typically lower frequencies)
         if signal_type == "Tono 1 kHz":
-            signal = 0.8 * np.sin(2 * np.pi * 1000 * t)
+            signal_out = 0.8 * np.sin(2 * np.pi * 1000 * t)
         elif signal_type == "Suma de tonos graves":
-            signal = (0.4 * np.sin(2 * np.pi * 300 * t) + 
-                     0.3 * np.sin(2 * np.pi * 600 * t) + 
-                     0.2 * np.sin(2 * np.pi * 900 * t))
+            signal_out = (0.4 * np.sin(2 * np.pi * 300 * t) + 
+                         0.3 * np.sin(2 * np.pi * 600 * t) + 
+                         0.2 * np.sin(2 * np.pi * 900 * t))
         elif signal_type == "Chirp ascendente":
-            signal = 0.7 * np.sin(2 * np.pi * (200 + 800 * t / duration) * t)
+            signal_out = 0.7 * np.sin(2 * np.pi * (200 + 800 * t / duration) * t)
         elif signal_type == "Ruido rosa":
             white = np.random.randn(len(t))
             # Simple pink noise filter
             b = [0.049922035, -0.095993537, 0.050612699, -0.004408786]
             a = [1, -2.494956002, 2.017265875, -0.522189400]
             from scipy import signal as sp_signal
-            signal = 0.4 * sp_signal.lfilter(b, a, white)
+            signal_out = 0.4 * sp_signal.lfilter(b, a, white)
         elif signal_type == "Voz masculina sintética":
             # Lower fundamental frequency for male voice
-            signal = generate_synthetic_voice_iq(duration, fs, f0=100, formants=[800, 1200])
+            signal_out = generate_synthetic_voice_iq(duration, fs, f0=100, formants=[800, 1200])
         else:
-            signal = 0.8 * np.sin(2 * np.pi * 1000 * t)
+            signal_out = 0.8 * np.sin(2 * np.pi * 1000 * t)
     
     else:  # Q channel
         if signal_type == "Tono 2 kHz":
-            signal = 0.8 * np.sin(2 * np.pi * 2000 * t)
+            signal_out = 0.8 * np.sin(2 * np.pi * 2000 * t)
         elif signal_type == "Suma de tonos agudos":
-            signal = (0.4 * np.sin(2 * np.pi * 1500 * t) + 
-                     0.3 * np.sin(2 * np.pi * 2000 * t) + 
-                     0.2 * np.sin(2 * np.pi * 2500 * t))
+            signal_out = (0.4 * np.sin(2 * np.pi * 1500 * t) + 
+                         0.3 * np.sin(2 * np.pi * 2000 * t) + 
+                         0.2 * np.sin(2 * np.pi * 2500 * t))
         elif signal_type == "Chirp descendente":
-            signal = 0.7 * np.sin(2 * np.pi * (3000 - 800 * t / duration) * t)
+            signal_out = 0.7 * np.sin(2 * np.pi * (3000 - 800 * t / duration) * t)
         elif signal_type == "Ruido blanco filtrado":
             white = np.random.randn(len(t))
             # High-pass filter for Q channel
             from scipy import signal as sp_signal
             sos = sp_signal.butter(4, 1000, btype='high', fs=fs, output='sos')
-            signal = 0.3 * sp_signal.sosfilt(sos, white)
+            signal_out = 0.3 * sp_signal.sosfilt(sos, white)
         elif signal_type == "Voz femenina sintética":
             # Higher fundamental frequency for female voice
-            signal = generate_synthetic_voice_iq(duration, fs, f0=200, formants=[1000, 1800])
+            signal_out = generate_synthetic_voice_iq(duration, fs, f0=200, formants=[1000, 1800])
         else:
-            signal = 0.8 * np.sin(2 * np.pi * 2000 * t)
+            signal_out = 0.8 * np.sin(2 * np.pi * 2000 * t)
     
     # Normalize and add some envelope variation
-    if np.max(np.abs(signal)) > 0:
-        signal = signal / np.max(np.abs(signal)) * 0.9
+    if np.max(np.abs(signal_out)) > 0:
+        signal_out = signal_out / np.max(np.abs(signal_out)) * 0.9
     
     # Add slight amplitude modulation for realism
     envelope = 1 + 0.1 * np.sin(2 * np.pi * 3 * t)
-    signal *= envelope
+    signal_out *= envelope
     
-    return signal.astype(np.float32), fs
+    return signal_out.astype(np.float32), fs
 
 def generate_synthetic_voice_iq(duration: float, fs: float, f0: float, formants: list) -> np.ndarray:
     """Generate synthetic voice for I/Q demonstration."""
     t = np.arange(0, duration, 1/fs)
     
     # Generate harmonic series with formant emphasis
-    signal = np.zeros_like(t)
+    signal_out = np.zeros_like(t)
     
     for harmonic in range(1, 15):
         freq = harmonic * f0
@@ -851,11 +857,11 @@ def generate_synthetic_voice_iq(duration: float, fs: float, f0: float, formants:
             if abs(freq - formant) < formant * 0.4:
                 amplitude *= 2.5
         
-        signal += amplitude * np.sin(2 * np.pi * freq * t)
+        signal_out += amplitude * np.sin(2 * np.pi * freq * t)
     
     # Add some speech-like modulation
     speech_mod = 1 + 0.3 * np.sin(2 * np.pi * 7 * t)  # 7 Hz typical speech rate
-    signal *= speech_mod
+    signal_out *= speech_mod
     
     # Add pauses for speech-like characteristics
     pause_mask = np.ones_like(t)
@@ -866,9 +872,21 @@ def generate_synthetic_voice_iq(duration: float, fs: float, f0: float, formants:
         if pause_end < len(pause_mask):
             pause_mask[pause_start:pause_end] *= 0.1
     
-    signal *= pause_mask
+    signal_out *= pause_mask
     
-    return signal
+    return signal_out
+
+def estimate_signal_bandwidth(frequencies: np.ndarray, psd: np.ndarray, threshold_db: float = -20) -> float:
+    """Estimate signal bandwidth from PSD."""
+    # Find frequencies where PSD is above threshold
+    peak_psd = np.max(psd)
+    mask = psd >= (peak_psd + threshold_db)
+    
+    if np.any(mask):
+        valid_freqs = frequencies[mask]
+        return np.max(valid_freqs) - np.min(valid_freqs)
+    else:
+        return 0.0
 
 if __name__ == "__main__":
     main()
