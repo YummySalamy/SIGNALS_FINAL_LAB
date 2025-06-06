@@ -143,7 +143,9 @@ def main():
         except:
             # Manual processing if cache fails
             # Modulation
-            y_modulated = dsb_sc_modulate(x, fc, fs_actual)
+            y_modulated, x_synchronized, fs_final = dsb_sc_modulate(x, fc, fs_actual)
+            x = x_synchronized  # Usar señal sincronizada para el resto del procesamiento
+            fs_actual = fs_final
             
             # Design receiver filter
             cutoff_freq = cutoff_ratio * fc

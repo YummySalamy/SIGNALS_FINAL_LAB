@@ -27,9 +27,9 @@ from scipy import signal
 from typing import Tuple, Optional
 import warnings
 
-def dsb_sc_modulate(x: np.ndarray, fc: float, fs: float) -> np.ndarray:
+def dsb_sc_modulate(x: np.ndarray, fc: float, fs: float) -> Tuple[np.ndarray, np.ndarray, float]:
     """
-    DSB-SC modulation: multiply message signal by carrier.
+    DSB-SC modulation with perfect temporal synchronization.
     
     Args:
         x: Message signal (baseband)
@@ -37,19 +37,46 @@ def dsb_sc_modulate(x: np.ndarray, fc: float, fs: float) -> np.ndarray:
         fs: Sampling frequency (Hz)
         
     Returns:
-        Modulated signal y(t) = x(t) × cos(ωct)
+        Tuple of (modulated_signal, synchronized_message, final_fs)
         
     Mathematical Note:
-        The spectrum is shifted to ±fc with suppressed carrier.
-        No power is wasted on the carrier component.
+        Ensures perfect temporal alignment between message and carrier
+        by using unified time grid for both signals.
     """
     if fc >= fs/2:
         warnings.warn(f"Carrier frequency {fc} Hz exceeds Nyquist limit {fs/2} Hz")
     
-    t = np.arange(len(x)) / fs
-    carrier = np.cos(2 * np.pi * fc * t)
+    # Check if we need higher sampling frequency
+    fs_min_required = 2.5 * fc  # Factor de seguridad
     
-    return x * carrier
+    if fs < fs_min_required:
+        # Necesitamos una frecuencia más alta
+        fs_new = fs_min_required
+        
+        # Crear vector temporal original
+        t_orig = np.arange(len(x)) / fs
+        duration = t_orig[-1]
+        
+        # Nuevo vector temporal de alta resolución
+        t_new = np.arange(0, duration, 1/fs_new)
+        
+        # Interpolar señal mensaje al nuevo grid temporal
+        x_interp = np.interp(t_new, t_orig, x)
+        
+        # Generar portadora en el MISMO grid temporal
+        carrier = np.cos(2 * np.pi * fc * t_new)
+        
+        # Modulación con vectores perfectamente sincronizados
+        y_modulated = x_interp * carrier
+        
+        return y_modulated, x_interp, fs_new
+    else:
+        # Si fs ya es suficiente, usar sincronización normal
+        t = np.arange(len(x)) / fs
+        carrier = np.cos(2 * np.pi * fc * t)
+        y_modulated = x * carrier
+        
+        return y_modulated, x, fs
 
 def dsb_sc_demod_mix(y: np.ndarray, fc: float, fs: float) -> np.ndarray:
     """

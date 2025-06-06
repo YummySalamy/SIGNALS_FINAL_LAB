@@ -731,3 +731,274 @@ def create_metrics_dashboard(metrics: Dict) -> None:
                         formatted_value = str(metric_value)
                     
                     st.metric(metric_name, formatted_value)
+
+# 🎯 AGREGAR ESTAS DOS FUNCIONES A plotting.py
+
+def create_trigonometric_spectrum_plot(coeffs: Dict, T: float) -> go.Figure:
+    """
+    📊 ESPECTRO TRIGONOMÉTRICO
+    
+    Muestra los coeficientes aₖ y bₖ vs armónico k
+    Esto es más directo para entender la serie de Fourier trigonométrica
+    
+    Args:
+        coeffs: Fourier coefficients dictionary
+        T: Signal period
+        
+    Returns:
+        Plotly figure with trigonometric spectrum (like your classmate's)
+    """
+    N = coeffs['N']
+    symmetry = coeffs['symmetry']
+    
+    # Armónicos k = 0, 1, 2, ..., N
+    k_values = np.arange(0, N+1)
+    a_coeffs = coeffs['a_coeffs']
+    b_coeffs = coeffs['b_coeffs']
+    
+    fig = go.Figure()
+    
+    # 📊 ESPECTRO DE COEFICIENTES aₖ
+    if symmetry != "odd":  # Mostrar aₖ si no es función impar
+        for k in k_values:
+            ak = a_coeffs[k]
+            if abs(ak) > 1e-8:  # Solo componentes significativas
+                # Stem plot
+                fig.add_trace(go.Scatter(
+                    x=[k, k], y=[0, ak],
+                    mode='lines',
+                    line=dict(color=COLORS['primary'], width=4),
+                    showlegend=False,
+                    hovertemplate=f'k={k}<br>aₖ: {ak:.6f}<extra></extra>'
+                ))
+                
+                # Marker
+                fig.add_trace(go.Scatter(
+                    x=[k], y=[ak],
+                    mode='markers',
+                    marker=dict(
+                        color=COLORS['primary'], 
+                        size=12 if k == 0 else 10,
+                        symbol='circle'
+                    ),
+                    showlegend=False,
+                    hovertemplate=f'k={k}<br>aₖ: {ak:.6f}<extra></extra>'
+                ))
+    
+    # 📊 ESPECTRO DE COEFICIENTES bₖ (si existen)
+    if symmetry != "even":  # Mostrar bₖ si no es función par
+        for k in range(1, N+1):  # bₖ empieza en k=1
+            bk = b_coeffs[k]
+            if abs(bk) > 1e-8:
+                # Stem plot para bₖ (diferente color)
+                fig.add_trace(go.Scatter(
+                    x=[k, k], y=[0, bk],
+                    mode='lines',
+                    line=dict(color=COLORS['secondary'], width=4),
+                    showlegend=False,
+                    hovertemplate=f'k={k}<br>bₖ: {bk:.6f}<extra></extra>'
+                ))
+                
+                # Marker para bₖ
+                fig.add_trace(go.Scatter(
+                    x=[k], y=[bk],
+                    mode='markers',
+                    marker=dict(
+                        color=COLORS['secondary'], 
+                        size=10,
+                        symbol='square'
+                    ),
+                    showlegend=False,
+                    hovertemplate=f'k={k}<br>bₖ: {bk:.6f}<extra></extra>'
+                ))
+    
+    # 🎨 CONFIGURACIÓN DEL PLOT
+    fig.update_layout(
+        title=f'Espectro en línea - Ejemplo {coeffs.get("example_id", "")}<br>Serie Trigonométrica: x(t) = a₀/2 + Σ[aₖcos(kω₀t) + bₖsin(kω₀t)]',
+        xaxis_title='Armónico k',
+        yaxis_title='Amplitud',
+        template='plotly_white',
+        height=500,
+        showlegend=False
+    )
+    
+    # Configurar ejes
+    fig.update_xaxes(
+        range=[-0.5, N+0.5],
+        dtick=1,  # Marcas cada entero
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='lightgray'
+    )
+    
+    # Rango Y automático pero con margen
+    all_coeffs = np.concatenate([a_coeffs, b_coeffs])
+    max_coeff = np.max(np.abs(all_coeffs[np.abs(all_coeffs) > 1e-8]))
+    fig.update_yaxes(
+        range=[-max_coeff*0.1, max_coeff*1.1],
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='lightgray'
+    )
+    
+    # 📝 Agregar leyenda manual
+    if symmetry == "even":
+        legend_text = "Función par: Solo coeficientes aₖ (coseno)"
+    elif symmetry == "odd":
+        legend_text = "Función impar: Solo coeficientes bₖ (seno)"
+    else:
+        legend_text = "Función general: Coeficientes aₖ (azul) y bₖ (naranja)"
+    
+    fig.add_annotation(
+        text=legend_text,
+        xref="paper", yref="paper",
+        x=0.02, y=0.98,
+        showarrow=False,
+        font=dict(size=12, color=COLORS['dark']),
+        bgcolor="rgba(255,255,255,0.9)",
+        bordercolor=COLORS['light'],
+        borderwidth=1
+    )
+    
+    return fig
+
+def create_complex_spectrum_plot(coeffs: Dict, T: float) -> go.Figure:
+    """
+    📊 ESPECTRO COMPLEJO - Coeficientes Cₖ vs frecuencia
+    
+    Muestra |Cₖ| vs frecuencia (Hz) - El espectro bilateral complejo
+    
+    Args:
+        coeffs: Fourier coefficients dictionary  
+        T: Signal period
+        
+    Returns:
+        Plotly figure with complex spectrum
+    """
+    N = coeffs['N']
+    omega0 = coeffs['omega0']
+    
+    # Frecuencias: -N×f₀, ..., -f₀, 0, f₀, ..., N×f₀
+    k_values = np.arange(-N, N+1)
+    freqs = k_values * omega0 / (2*np.pi)  # Convertir a Hz
+    
+    # Coeficientes complejos
+    c_coeffs = coeffs['c_coeffs']
+    magnitudes = np.abs(c_coeffs)
+    phases = np.angle(c_coeffs, deg=True)
+    
+    # Filtrar componentes significativas
+    threshold = 1e-6 * np.max(magnitudes) if np.max(magnitudes) > 0 else 1e-6
+    significant_mask = magnitudes > threshold
+    
+    # Create subplots
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=['Magnitude Spectrum |Cₖ|', 'Phase Spectrum ∠Cₖ (°)'],
+        vertical_spacing=0.15
+    )
+    
+    # 📊 MAGNITUDE SPECTRUM
+    for i, (f, mag, k) in enumerate(zip(freqs, magnitudes, k_values)):
+        if significant_mask[i]:
+            # Stem line
+            fig.add_trace(go.Scatter(
+                x=[f, f], y=[0, mag],
+                mode='lines',
+                line=dict(color=COLORS['primary'], width=3),
+                showlegend=False,
+                hovertemplate=f'k={k}<br>f: {f:.3f} Hz<br>|Cₖ|: {mag:.6f}<extra></extra>'
+            ), row=1, col=1)
+            
+            # Marker
+            fig.add_trace(go.Scatter(
+                x=[f], y=[mag],
+                mode='markers',
+                marker=dict(
+                    color=COLORS['primary'], 
+                    size=12 if k == 0 else 8,
+                    symbol='circle'
+                ),
+                showlegend=False,
+                hovertemplate=f'k={k}<br>f: {f:.3f} Hz<br>|Cₖ|: {mag:.6f}<extra></extra>'
+            ), row=1, col=1)
+    
+    # 📊 PHASE SPECTRUM  
+    for i, (f, mag, phase, k) in enumerate(zip(freqs, magnitudes, phases, k_values)):
+        if significant_mask[i] and mag > 1e-8:
+            phase_clean = phase if mag > 1e-6 else 0
+            
+            # Stem line
+            fig.add_trace(go.Scatter(
+                x=[f, f], y=[0, phase_clean],
+                mode='lines',
+                line=dict(color=COLORS['secondary'], width=3),
+                showlegend=False,
+                hovertemplate=f'k={k}<br>f: {f:.3f} Hz<br>∠Cₖ: {phase_clean:.1f}°<extra></extra>'
+            ), row=2, col=1)
+            
+            # Marker
+            fig.add_trace(go.Scatter(
+                x=[f], y=[phase_clean],
+                mode='markers',
+                marker=dict(
+                    color=COLORS['secondary'], 
+                    size=12 if k == 0 else 8,
+                    symbol='circle'
+                ),
+                showlegend=False,
+                hovertemplate=f'k={k}<br>f: {f:.3f} Hz<br>∠Cₖ: {phase_clean:.1f}°<extra></extra>'
+            ), row=2, col=1)
+    
+    # 🎨 CONFIGURACIÓN
+    fig.update_xaxes(title_text='Frequency (Hz)', row=2, col=1)
+    fig.update_yaxes(title_text='|Cₖ|', row=1, col=1)
+    fig.update_yaxes(title_text='Phase (degrees)', row=2, col=1)
+    
+    fig.update_layout(
+        template='plotly_white',
+        height=600,
+        showlegend=False,
+        title=f'Complex Line Spectrum - Exponential Form<br>x(t) = Σ Cₖe^(jkω₀t)'
+    )
+    
+    return fig
+
+def create_line_spectrum_plot(coeffs: Dict, T: float, spectrum_type: str = "trigonometric") -> go.Figure:
+    """
+    📊 FUNCIÓN PRINCIPAL - Crear espectro según el tipo solicitado
+    
+    Args:
+        coeffs: Fourier coefficients dictionary
+        T: Signal period  
+        spectrum_type: "trigonometric" o "complex" (bilateral)
+        
+    Returns:
+        Plotly figure with requested spectrum type
+    """
+    if spectrum_type == "trigonometric":
+        return create_trigonometric_spectrum_plot(coeffs, T)
+    elif spectrum_type == "complex":
+        return create_complex_spectrum_plot(coeffs, T)
+    else:
+        raise ValueError("spectrum_type must be 'trigonometric' or 'complex'")
+
+def main():
+    # ... código existente ...
+    
+    # En la sección de sidebar, agregar selector de tipo de espectro
+    spectrum_type = st.sidebar.selectbox(
+        "📊 Tipo de espectro:",
+        ["trigonometric", "complex"],
+        index=0,
+        help="Trigonométrico: aₖ vs k \nComplejo: |Cₖ| vs frecuencia"
+    )
+    
+    # ... resto del código ...
+    
+    # En la sección de plotting:
+    if col2 is not None:
+        with col2:
+            st.subheader("📊 Espectro de líneas")
+            fig_spectrum = create_line_spectrum_plot(coeffs, T, spectrum_type)
+            st.plotly_chart(fig_spectrum, use_container_width=True)

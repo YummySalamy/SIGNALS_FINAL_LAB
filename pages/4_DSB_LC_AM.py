@@ -279,14 +279,160 @@ def main():
         "🎵 Audio"
     ])
     
+    # Reemplazar la sección with tab1: en tu archivo DSB-LC por este código:
+
     with tab1:
         st.subheader("Formas de onda del sistema AM")
         
-        # Time vector for display
-        display_duration = min(analysis_opts['time_window']/1000, len(m)/fs)
-        n_display = int(display_duration * fs)
-        t_display = np.arange(n_display) / fs * 1000  # Convert to ms
+        # 🎛️ CONTROLES DE VISUALIZACIÓN MEJORADOS
+        st.markdown("**🎛️ Controles de visualización:**")
         
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            # Control de ciclos de portadora
+            if signal_mode == "Triple tono (A + B + C)":
+                # Para multi-tono, calcular el período de la señal más lenta
+                min_freq = min(f1, f2, f3)
+                signal_period = 1 / min_freq  # Período de la componente más lenta
+                
+                # Calcular cuántos períodos de portadora hay en un período de señal
+                carrier_periods_per_signal = fc * signal_period
+                
+                cycle_options = [
+                    "1 período señal",
+                    "2 períodos señal", 
+                    "5 períodos señal",
+                    "10 períodos señal",
+                    "1 período portadora",
+                    "5 períodos portadora",
+                    "10 períodos portadora",
+                    "50 períodos portadora",
+                    "Todos"
+                ]
+            else:
+                # Para otras señales, usar frecuencia base estimada
+                signal_period = 1 / wave_freq if 'wave_freq' in locals() else 0.01
+                cycle_options = [
+                    "1 ciclo señal",
+                    "2 ciclos señal", 
+                    "5 ciclos señal",
+                    "10 ciclos señal",
+                    "1 ciclo portadora",
+                    "5 ciclos portadora",
+                    "10 ciclos portadora",
+                    "50 ciclos portadora",
+                    "Todos"
+                ]
+            
+            view_mode = st.selectbox(
+                "🔍 Vista temporal:",
+                cycle_options,
+                index=2,  # Default: 5 períodos
+                key="view_cycles"
+            )
+        
+        with col2:
+            # Control de unidades
+            time_unit = st.selectbox(
+                "⏱️ Unidad tiempo:",
+                ["Milisegundos", "Segundos"],
+                index=0,
+                key="time_unit_am"
+            )
+        
+        with col3:
+            # Control de zoom fino
+            zoom_factor = st.slider(
+                "🔎 Zoom adicional:",
+                min_value=0.1,
+                max_value=5.0,
+                value=1.0,
+                step=0.1,
+                key="zoom_factor_am"
+            )
+        
+        with col4:
+            # Control de posición
+            if view_mode != "Todos":
+                position_pct = st.slider(
+                    "📍 Posición (%):",
+                    min_value=0,
+                    max_value=90,
+                    value=0,
+                    step=5,
+                    key="position_am"
+                )
+            else:
+                position_pct = 0
+                st.metric("📏 Duración total", f"{len(m)/fs:.2f} s")
+        
+        # Calcular parámetros de visualización
+        total_duration = len(m) / fs
+        
+        if view_mode == "Todos":
+            display_duration = total_duration
+            start_time = 0
+        
+        elif "portadora" in view_mode:
+            # Extraer número de períodos de portadora
+            num_periods = int(view_mode.split()[0])
+            carrier_period = 1 / fc
+            display_duration = num_periods * carrier_period / zoom_factor
+            max_start = max(0, total_duration - display_duration)
+            start_time = (position_pct / 100) * max_start
+        
+        elif "señal" in view_mode or "ciclo" in view_mode:
+            # Extraer número de períodos de señal
+            num_periods = int(view_mode.split()[0])
+            display_duration = num_periods * signal_period / zoom_factor
+            max_start = max(0, total_duration - display_duration)
+            start_time = (position_pct / 100) * max_start
+        
+        # Asegurar que no excedemos los límites
+        if start_time + display_duration > total_duration:
+            display_duration = total_duration - start_time
+        
+        # Convertir a muestras
+        start_sample = int(start_time * fs)
+        n_display = int(display_duration * fs)
+        end_sample = min(start_sample + n_display, len(m))
+        
+        # Vector temporal para visualización
+        if time_unit == "Milisegundos":
+            t_display = np.arange(start_sample, end_sample) / fs * 1000
+            time_label = "Tiempo (ms)"
+            time_suffix = "ms"
+        else:
+            t_display = np.arange(start_sample, end_sample) / fs
+            time_label = "Tiempo (s)"
+            time_suffix = "s"
+        
+        # 📊 INFORMACIÓN DE LA VISTA ACTUAL
+        st.markdown("**📊 Información de la vista actual:**")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("📏 Muestras", f"{end_sample - start_sample:,}")
+        with col2:
+            if time_unit == "Milisegundos":
+                st.metric("⏱️ Duración", f"{display_duration*1000:.1f} ms")
+            else:
+                st.metric("⏱️ Duración", f"{display_duration:.3f} s")
+        with col3:
+            # Calcular número de ciclos mostrados
+            if display_duration > 0:
+                if "portadora" in view_mode:
+                    cycles_shown = display_duration * fc
+                    st.metric("🔄 Ciclos portadora", f"{cycles_shown:.1f}")
+                else:
+                    cycles_shown = display_duration / signal_period
+                    st.metric("🔄 Ciclos señal", f"{cycles_shown:.1f}")
+        with col4:
+            progress_pct = (start_time + display_duration/2) / total_duration * 100
+            st.metric("📍 Posición", f"{progress_pct:.1f}%")
+        
+        # 🎨 GRÁFICAS PRINCIPALES
         # Create comprehensive time domain plot
         fig = make_subplots(
             rows=4, cols=1,
@@ -299,79 +445,210 @@ def main():
             vertical_spacing=0.08
         )
         
+        # Extraer datos para la ventana actual
+        m_window = m[start_sample:end_sample]
+        s_am_window = s_am[start_sample:end_sample]
+        env_window = envelope_detected[start_sample:end_sample]
+        m_rec_window = m_recovered[start_sample:end_sample]
+        
         # Original message signal
         fig.add_trace(go.Scatter(
-            x=t_display, y=m[:n_display],
+            x=t_display, y=m_window,
             mode='lines', name='m(t)', line=dict(color='blue', width=2),
-            hovertemplate='Mensaje<br>t: %{x:.2f} ms<br>m(t): %{y:.4f}<extra></extra>'
+            hovertemplate=f'Mensaje<br>t: %{{x:.2f}} {time_suffix}<br>m(t): %{{y:.4f}}<extra></extra>'
         ), row=1, col=1)
         
         # AM signal
         fig.add_trace(go.Scatter(
-            x=t_display, y=s_am[:n_display],
+            x=t_display, y=s_am_window,
             mode='lines', name='s(t)', line=dict(color='red', width=1),
-            hovertemplate='AM<br>t: %{x:.2f} ms<br>s(t): %{y:.4f}<extra></extra>'
+            hovertemplate=f'AM<br>t: %{{x:.2f}} {time_suffix}<br>s(t): %{{y:.4f}}<extra></extra>'
         ), row=2, col=1)
         
         # Envelope
         fig.add_trace(go.Scatter(
-            x=t_display, y=envelope_detected[:n_display],
+            x=t_display, y=env_window,
             mode='lines', name='Envolvente', line=dict(color='green', width=3),
-            hovertemplate='Envolvente<br>t: %{x:.2f} ms<br>Env: %{y:.4f}<extra></extra>'
+            hovertemplate=f'Envolvente<br>t: %{{x:.2f}} {time_suffix}<br>Env: %{{y:.4f}}<extra></extra>'
         ), row=3, col=1)
         
         # Add theoretical envelope for comparison
-        theoretical_envelope = 1 + mu * m[:n_display]
+        theoretical_envelope = 1 + mu * m_window
         fig.add_trace(go.Scatter(
             x=t_display, y=theoretical_envelope,
             mode='lines', name='Envolvente teórica', 
             line=dict(color='lightgreen', width=2, dash='dash'),
-            hovertemplate='Teórica<br>t: %{x:.2f} ms<br>Env: %{y:.4f}<extra></extra>'
+            hovertemplate=f'Teórica<br>t: %{{x:.2f}} {time_suffix}<br>Env: %{{y:.4f}}<extra></extra>'
         ), row=3, col=1)
         
         # Recovered vs original message
         fig.add_trace(go.Scatter(
-            x=t_display, y=m[:n_display],
+            x=t_display, y=m_window,
             mode='lines', name='Original', line=dict(color='blue', width=2),
-            hovertemplate='Original<br>t: %{x:.2f} ms<br>m(t): %{y:.4f}<extra></extra>'
+            hovertemplate=f'Original<br>t: %{{x:.2f}} {time_suffix}<br>m(t): %{{y:.4f}}<extra></extra>'
         ), row=4, col=1)
         
         fig.add_trace(go.Scatter(
-            x=t_display, y=m_recovered[:n_display],
+            x=t_display, y=m_rec_window,
             mode='lines', name='Recuperado', 
             line=dict(color='orange', width=2, dash='dash'),
-            hovertemplate='Recuperado<br>t: %{x:.2f} ms<br>m̂(t): %{y:.4f}<extra></extra>'
+            hovertemplate=f'Recuperado<br>t: %{{x:.2f}} {time_suffix}<br>m̂(t): %{{y:.4f}}<extra></extra>'
         ), row=4, col=1)
         
-        fig.update_xaxes(title_text="Tiempo (ms)", row=4, col=1)
+        fig.update_xaxes(title_text=time_label, row=4, col=1)
         fig.update_yaxes(title_text="Amplitud")
         fig.update_layout(height=800, showlegend=False, template='plotly_white')
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Zoom control for detailed view
-        st.markdown("**🔍 Vista detallada:**")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            zoom_start = st.slider("Inicio (ms):", 0, int(display_duration*1000-20), 0)
-        with col2:
-            zoom_length = st.slider("Duración (ms):", 5, 100, 20)
-        
-        if zoom_length > 0:
-            start_idx = int(zoom_start/1000 * fs)
-            end_idx = int((zoom_start + zoom_length)/1000 * fs)
-            end_idx = min(end_idx, n_display)
+        # 🔍 VISTA DETALLADA ADICIONAL
+        if st.checkbox("🔬 Vista ultra-detallada (alta resolución)"):
+            st.markdown("**🔎 Análisis de alta resolución:**")
             
-            if end_idx > start_idx:
-                fig_zoom = create_am_envelope_plot(
-                    t_display[start_idx:end_idx]/1000,  # Convert back to seconds
-                    s_am[start_idx:end_idx],
-                    envelope_detected[start_idx:end_idx],
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                detail_duration_ms = st.slider(
+                    "Ventana detalle (ms):", 
+                    min_value=1, 
+                    max_value=50, 
+                    value=10,
+                    key="detail_window"
+                )
+            
+            with col2:
+                detail_start_ms = st.slider(
+                    "Inicio detalle (ms):", 
+                    min_value=0, 
+                    max_value=int(display_duration*1000 - detail_duration_ms), 
+                    value=0,
+                    key="detail_start"
+                )
+            
+            # Calcular ventana de detalle
+            detail_start_sample = start_sample + int(detail_start_ms/1000 * fs)
+            detail_n_samples = int(detail_duration_ms/1000 * fs)
+            detail_end_sample = min(detail_start_sample + detail_n_samples, end_sample)
+            
+            if detail_end_sample > detail_start_sample:
+                t_detail = np.arange(detail_start_sample, detail_end_sample) / fs * 1000
+                
+                # Crear gráfica de envolvente detallada
+                fig_detail = create_am_envelope_plot(
+                    t_detail/1000,  # Convertir de ms a s para la función
+                    s_am[detail_start_sample:detail_end_sample],
+                    envelope_detected[detail_start_sample:detail_end_sample],
                     mu
                 )
                 
-                st.plotly_chart(fig_zoom, use_container_width=True)
+                # Agregar señal mensaje para referencia
+                fig_detail.add_trace(go.Scatter(
+                    x=t_detail, y=1 + mu * m[detail_start_sample:detail_end_sample],
+                    mode='lines', name='Envolvente ideal',
+                    line=dict(color='black', width=2, dash='dot'),
+                    hovertemplate='Ideal<br>t: %{x:.2f} ms<br>Ideal: %{y:.4f}<extra></extra>'
+                ))
+                
+                fig_detail.update_layout(
+                    title=f"Vista Detallada: {detail_duration_ms}ms desde {detail_start_ms}ms",
+                    height=500
+                )
+                
+                st.plotly_chart(fig_detail, use_container_width=True)
+                
+                # Métricas de la ventana detallada
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    detail_cycles_carrier = detail_duration_ms/1000 * fc
+                    st.metric("🔄 Ciclos portadora", f"{detail_cycles_carrier:.1f}")
+                
+                with col2:
+                    if signal_period > 0:
+                        detail_cycles_signal = detail_duration_ms/1000 / signal_period
+                        st.metric("🔄 Ciclos señal", f"{detail_cycles_signal:.2f}")
+                
+                with col3:
+                    # Calcular distorsión local si hay sobremodulación
+                    if mu > 1.0:
+                        env_local = envelope_detected[detail_start_sample:detail_end_sample]
+                        inversions_local = np.sum(env_local < np.mean(env_local)*0.5)
+                        inversion_pct_local = inversions_local / len(env_local) * 100
+                        st.metric("⚠️ Inversiones (%)", f"{inversion_pct_local:.1f}")
+                    else:
+                        st.metric("✅ Estado", "Normal")
+        
+        # ⚡ NAVEGACIÓN RÁPIDA
+        if view_mode != "Todos":
+            st.markdown("**⚡ Navegación rápida:**")
+            col1, col2, col3, col4, col5 = st.columns(5)
+            
+            with col1:
+                if st.button("⏮️ Inicio", key="nav_start_am"):
+                    st.session_state.position_am = 0
+                    st.rerun()
+            
+            with col2:
+                if st.button("⬅️ Anterior", key="nav_prev_am"):
+                    new_pos = max(0, position_pct - 10)
+                    st.session_state.position_am = new_pos
+                    st.rerun()
+            
+            with col3:
+                if st.button("🎯 Centro", key="nav_center_am"):
+                    st.session_state.position_am = 45
+                    st.rerun()
+            
+            with col4:
+                if st.button("➡️ Siguiente", key="nav_next_am"):
+                    new_pos = min(90, position_pct + 10)
+                    st.session_state.position_am = new_pos
+                    st.rerun()
+            
+            with col5:
+                if st.button("⏭️ Final", key="nav_end_am"):
+                    st.session_state.position_am = 90
+                    st.rerun()
+        
+        # 📋 PRESETS DE VISUALIZACIÓN
+        with st.expander("📋 Presets de visualización recomendados"):
+            st.markdown("""
+            **🎯 Presets útiles según el análisis:**
+            
+            • **Para ver modulación:** 2-5 períodos señal + zoom 1.0
+            • **Para ver portadora:** 10-20 períodos portadora + zoom 2.0  
+            • **Para ver sobremodulación:** 1 período señal + zoom 3.0
+            • **Para análisis general:** 5 períodos señal + zoom 1.0
+            • **Para precisión:** Vista ultra-detallada con 5-10ms
+            """)
+            
+            # Botones de presets
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                if st.button("🎵 Preset Modulación"):
+                    st.session_state.view_cycles = "2 períodos señal" if "señal" in cycle_options[1] else "2 ciclos señal"
+                    st.session_state.zoom_factor_am = 1.0
+                    st.rerun()
+            
+            with col2:
+                if st.button("📡 Preset Portadora"):
+                    st.session_state.view_cycles = "10 períodos portadora"
+                    st.session_state.zoom_factor_am = 2.0
+                    st.rerun()
+            
+            with col3:
+                if st.button("⚠️ Preset Distorsión"):
+                    st.session_state.view_cycles = "1 período señal" if "señal" in cycle_options[0] else "1 ciclo señal"
+                    st.session_state.zoom_factor_am = 3.0
+                    st.rerun()
+            
+            with col4:
+                if st.button("🔄 Reset a Defecto"):
+                    st.session_state.view_cycles = cycle_options[2]  # 5 períodos
+                    st.session_state.zoom_factor_am = 1.0
+                    st.session_state.position_am = 0
+                    st.rerun()
     
     with tab2:
         st.subheader("Análisis espectral del sistema AM")

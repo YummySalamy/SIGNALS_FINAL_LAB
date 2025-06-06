@@ -3,6 +3,8 @@ Fourier Series Analysis Page
 
 Interactive analysis of textbook examples 3.6.1 through 3.6.4
 with real-time parameter adjustment and visualization.
+
+🔧 VERSIÓN CORREGIDA: Incluye selector de tipo de espectro
 """
 
 import streamlit as st
@@ -89,6 +91,17 @@ def main():
         help="Mostrar espectro de coeficientes de Fourier"
     )
     
+    # 🔧 NUEVO: Selector de tipo de espectro
+    spectrum_type = st.sidebar.selectbox(
+        "📊 Tipo de espectro:",
+        ["Trigonométrico (aₖ vs k)", "Complejo (|Cₖ| vs f)"],
+        index=0,
+        help="""
+        • Trigonométrico: (aₖ, bₖ vs armónico k)
+        • Complejo: Espectro bilateral (|Cₖ| vs frecuencia Hz)
+        """
+    )
+    
     show_coefficients = st.sidebar.checkbox(
         "🔢 Tabla de coeficientes",
         value=False,
@@ -110,6 +123,9 @@ def main():
     # Compute Fourier coefficients (cached)
     with st.spinner("Calculando coeficientes de Fourier..."):
         coeffs = cached_fourier_coefficients(example_id, N, coeffs_key)
+    
+    # 🔧 NUEVO: Agregar example_id a coeffs para plotting
+    coeffs['example_id'] = example_id
     
     # Generate time vectors
     t_period = np.linspace(-T/2, T/2, points_per_period, endpoint=False)
@@ -141,6 +157,12 @@ def main():
         st.metric("🔢 Armónicos", N)
     with col4:
         st.metric("❌ Error RMS", f"{rms_error:.6f}")
+    
+    # 🔧 NUEVO: Mostrar información específica del tipo de espectro
+    if spectrum_type.startswith("Trigonométrico"):
+        st.info("📊 **Modo Trigonométrico**: Mostrando coeficientes aₖ (y bₖ) vs armónico k")
+    else:
+        st.info("📊 **Modo Complejo**: Mostrando magnitud |Cₖ| vs frecuencia (Hz) - Espectro bilateral")
     
     # Main visualization
     if show_spectrum:
@@ -193,31 +215,79 @@ def main():
     if col2 is not None:
         with col2:
             st.subheader("📊 Espectro de líneas")
-            fig_spectrum = create_line_spectrum_plot(coeffs, T)
+            
+            # 🔧 NUEVO: Seleccionar tipo de espectro
+            if spectrum_type.startswith("Trigonométrico"):
+                spectrum_mode = "trigonometric"
+            else:
+                spectrum_mode = "complex"
+            
+            # Crear espectro según el tipo seleccionado
+            fig_spectrum = create_line_spectrum_plot(coeffs, T, spectrum_mode)
             st.plotly_chart(fig_spectrum, use_container_width=True)
             
-            # Show dominant frequencies
-            c_coeffs = coeffs['c_coeffs']
-            magnitudes = np.abs(c_coeffs)
-            N_coeffs = coeffs['N']
+            # 🔧 NUEVO: Información contextual según el tipo de espectro
+            if spectrum_mode == "trigonometric":
+                st.markdown("**🎯 Coeficientes principales:**")
+                
+                # Mostrar coeficientes más importantes
+                a_coeffs = coeffs['a_coeffs']
+                b_coeffs = coeffs['b_coeffs']
+                
+                # Para funciones pares (como 3.6.1), mostrar aₖ
+                if signal_params['symmetry'] == 'even':
+                    for k in range(min(6, len(a_coeffs))):
+                        if abs(a_coeffs[k]) > 1e-6:
+                            coeff_name = "a₀" if k == 0 else f"a{k}"
+                            st.text(f"{coeff_name} = {a_coeffs[k]:.6f}")
+                
+                # Para funciones impares, mostrar bₖ
+                elif signal_params['symmetry'] == 'odd':
+                    for k in range(1, min(6, len(b_coeffs))):
+                        if abs(b_coeffs[k]) > 1e-6:
+                            st.text(f"b{k} = {b_coeffs[k]:.6f}")
+                
+                # Para funciones generales, mostrar ambos
+                else:
+                    st.text("**Coeficientes aₖ (coseno):**")
+                    for k in range(min(4, len(a_coeffs))):
+                        if abs(a_coeffs[k]) > 1e-6:
+                            coeff_name = "a₀" if k == 0 else f"a{k}"
+                            st.text(f"  {coeff_name} = {a_coeffs[k]:.6f}")
+                    
+                    st.text("**Coeficientes bₖ (seno):**")
+                    for k in range(1, min(4, len(b_coeffs))):
+                        if abs(b_coeffs[k]) > 1e-6:
+                            st.text(f"  b{k} = {b_coeffs[k]:.6f}")
             
-            # Find top 5 components (excluding DC)
-            freqs = np.arange(-N_coeffs, N_coeffs+1) * omega0 / (2*np.pi)
-            dc_idx = N_coeffs  # DC component index
-            
-            # Exclude DC for finding peaks
-            mag_no_dc = magnitudes.copy()
-            mag_no_dc[dc_idx] = 0
-            
-            top_indices = np.argsort(mag_no_dc)[-5:][::-1]
-            
-            st.markdown("**🎯 Componentes dominantes:**")
-            for idx in top_indices:
-                if magnitudes[idx] > 1e-6:
-                    freq = freqs[idx]
-                    mag = magnitudes[idx]
-                    harmonic = int(np.round(freq * T)) if freq != 0 else 0
-                    st.text(f"f={freq:.3f} Hz (H{harmonic}): {mag:.4f}")
+            else:  # Modo complejo
+                # Show dominant frequencies
+                c_coeffs = coeffs['c_coeffs']
+                magnitudes = np.abs(c_coeffs)
+                N_coeffs = coeffs['N']
+                
+                # Find top 5 components (excluding DC)
+                freqs = np.arange(-N_coeffs, N_coeffs+1) * omega0 / (2*np.pi)
+                dc_idx = N_coeffs  # DC component index
+                
+                # Exclude DC for finding peaks
+                mag_no_dc = magnitudes.copy()
+                mag_no_dc[dc_idx] = 0
+                
+                top_indices = np.argsort(mag_no_dc)[-5:][::-1]
+                
+                st.markdown("**🎯 Componentes dominantes:**")
+                # Mostrar DC primero
+                if magnitudes[dc_idx] > 1e-6:
+                    st.text(f"DC (f=0): |C₀| = {magnitudes[dc_idx]:.6f}")
+                
+                # Mostrar otros componentes
+                for idx in top_indices:
+                    if magnitudes[idx] > 1e-6:
+                        freq = freqs[idx]
+                        mag = magnitudes[idx]
+                        k = idx - N_coeffs
+                        st.text(f"f={freq:.3f} Hz (k={k}): |C{k}| = {mag:.6f}")
     
     # Convergence analysis
     if show_error:
@@ -377,6 +447,45 @@ def main():
         3. ∫|x(t)|dt < ∞
         """)
     
+    # 🔧 NUEVO: Sección de debugging y verificación
+    with st.expander("🔧 Verificación y debugging"):
+        st.markdown("**🧪 Verificación de coeficientes para debugging:**")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Valores calculados:**")
+            if len(coeffs['a_coeffs']) > 0:
+                st.text(f"a₀ = {coeffs['a_coeffs'][0]:.6f}")
+            if len(coeffs['a_coeffs']) > 1:
+                st.text(f"a₁ = {coeffs['a_coeffs'][1]:.6f}")
+            if len(coeffs['a_coeffs']) > 3:
+                st.text(f"a₃ = {coeffs['a_coeffs'][3]:.6f}")
+            
+            if len(coeffs['c_coeffs']) > 0:
+                N_c = coeffs['N']
+                st.text(f"|C₀| = {abs(coeffs['c_coeffs'][N_c]):.6f}")
+                if len(coeffs['c_coeffs']) > N_c + 1:
+                    st.text(f"|C₁| = {abs(coeffs['c_coeffs'][N_c + 1]):.6f}")
+        
+        with col2:
+            st.markdown("**Valores esperados (Ej. 3.6.1):**")
+            st.text("a₀ = 1.000000")
+            st.text("a₁ = 0.810569")
+            st.text("a₃ = 0.090063")
+            st.text("|C₀| = 0.500000")
+            st.text("|C₁| = 0.405285")
+        
+        # Botón para debugging detallado
+        if st.button("🔍 Ejecutar debugging detallado"):
+            with st.spinner("Ejecutando verificación..."):
+                # Aquí podrías llamar a la función de debugging
+                st.code("""
+# Para debugging detallado, ejecuta en tu entorno:
+from dsp.fourier import debug_ejemplo_361
+resultados = debug_ejemplo_361()
+                """)
+    
     # Performance information
     with st.expander("⚡ Información de rendimiento"):
         col1, col2 = st.columns(2)
@@ -393,6 +502,7 @@ def main():
             memory_mb = estimate_array_memory(t_extended) + estimate_array_memory(x_original_extended) + estimate_array_memory(x_reconstructed)
             st.text(f"Memoria usada: {memory_mb:.1f} MB")
             st.text(f"Señal: {signal_params['description']}")
+            st.text(f"Espectro: {spectrum_type}")
     
     # Export options
     st.markdown("---")

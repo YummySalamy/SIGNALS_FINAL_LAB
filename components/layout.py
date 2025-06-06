@@ -104,7 +104,7 @@ def create_filter_controls(default_order: int = 101) -> Tuple[int, str, float]:
         "Cutoff Frequency (× fc):",
         min_value=0.1,
         max_value=2.0,
-        value=0.8,
+        value=0.3,
         step=0.1,
         help="Cutoff relative to carrier frequency"
     )
@@ -138,7 +138,7 @@ def create_modulation_controls() -> Dict[str, Any]:
     params['fs'] = st.sidebar.number_input(
         "Sampling Frequency (kHz):",
         min_value=80,
-        max_value=200,
+        max_value=1000,
         value=100,
         step=5,
         help="Must be > 2 × carrier frequency"
